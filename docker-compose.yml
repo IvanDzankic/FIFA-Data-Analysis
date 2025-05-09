@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./scripts:/app/scripts
+    environment:
+      - DB_NAME=fifa_db
+      - DB_USER=fifa_user
+      - DB_PASSWORD=fifa_password
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      - db
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: fifa_db
+      POSTGRES_USER: fifa_user
+      POSTGRES_PASSWORD: fifa_password
+    ports:
+      - "5432:5432"
