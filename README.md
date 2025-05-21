@@ -2,6 +2,21 @@
 
 Zadatak u sklopu CROZ Ljetnog akceleratora koji uključuje modeliranje podataka, pisanje SQL upita te kreaciju vizualnog prikaza podataka.
 
+
+## Korištena tehnologija
+
+- **PostgreSQL** - Relacijska baza podataka za pohranu obrađenog dataseta
+- **pgAdmin4** - Grafičko sučelje za upravljanje PostgreSQL bazom podataka
+- **PowerBI** - Alat za vizualizaciju podataka
+- **Docker i Docker Compose** - Alati za postavljanje razvojnog okruženja (Docker projekt dijeli u kontejnere, a Docker Compose povezuje i pokreće servise)
+- **Python** - Programski jezik za rad s podacima
+
+### Korištene Python biblioteke
+
+- **pandas** - Glavna biblioteka za rad s tabličnim podacima i pripremu podataka za pohranu u bazu podataka
+- **sqlalchemy** - Korištena za povezivanje s bazom podataka te unos podataka
+- **psycopg2** - PostgreSQL adapter za Python, također korišten u svrhu povezivanja s bazom podataka te direktnim izvršavanjem skripte za kreaciju baze podataka `db_creation.sql`
+
 ## Pokretanje
 
 ### Preduvjeti
@@ -43,6 +58,8 @@ Nakon pokretanja, potrebno je:
     - Password: fifa_password
 - Save
 - Tablice je sada moguće pregledati u "Schemas > public > tables"
+- Pomoću query toola moguće je i pokrenuti upite iz `scripts/sql_upiti.sql` koji odgovaraju na pitanja zadana u zadatku
+- Vizualni prikaz podataka nalazi se u PowerBi izvješću `report.pbix`
 
 ERD dijagram nastale baze podataka:
 

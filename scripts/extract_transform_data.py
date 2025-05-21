@@ -1,34 +1,41 @@
 import pandas as pd 
 
+
+#Učitavanje podataka u pandas dataframeove
 fifa21 = pd.read_csv('data/FIFA21_official_data.csv')
 fifa22 = pd.read_csv('data/FIFA22_official_data.csv')
 
+#Uklanjanje leading i trailing whitespaceova iz naziva stupaca i vrijednosti tablica
+#Za vrijednosti tablica korišten regex zbog jednostavnosti i jer je strip() funkcija bila problematična
 fifa21.columns = fifa21.columns.str.strip()
 fifa22.columns = fifa22.columns.str.strip()
 fifa21 = fifa21.replace(r'^\s+|\s+$', '', regex=True)
 fifa22 = fifa22.replace(r'^\s+|\s+$', '', regex=True)
 
-
+#Dodavanje stupca godine u dataframeove
 fifa21["year"] = 2021
 fifa22["year"] = 2022
+
+#Spajanje dataframeova u jedan
 dataset = pd.concat([fifa21, fifa22], ignore_index=True)
 df = dataset
 
 
-#Clean name
+#Stvaranje novog stupca koji sadrži ime igrača bez brojeva, jer su neki igrači imali brojeve u imenu
 df["Clean_Name"] = df["Name"].str.extract(r'(\D+)', expand=False)
 
-#Country name consistency
+#Grupiramo podatke prema ID-u i tražimo sve ID-ove koji imaju različite vrijednosti za Nacionality
+#Uspoređuju se države za svakog igrača u 2021. i 2022. godini jer su u ulaznom datasetu neke države imale različite nazive
 inconsistent_rows = df.groupby('ID')['Nationality'].nunique() > 1
 inconsistent_ids = inconsistent_rows[inconsistent_rows == True].index
 
-#Copy 2022 dataset country name to 2021
+#Za svakog igrača kojemu su imena države različita u 2021. i 2022. godini, uzimamo ime države iz 2022. godine i postavljamo ga u 2021. godinu radi konzistentnosti 
 for id in inconsistent_ids:
     country_2022 = df[(df['ID'] == id) & (df['year'] == 2022)]['Nationality'].values
 
     df.loc[(df['ID'] == id) & (df['year'] == 2021), 'Nationality'] = country_2022[0]
 
-#Flag link consistency
+#Slično kao i za nacionalnost, provjeravamo sve igrače koji imaju različite linkove za državnu zastavu i uzimamo link iz 2022. godine
 inconsistent_rows = df.groupby('ID')['Flag'].nunique() > 1
 
 inconsistent_ids = inconsistent_rows[inconsistent_rows].index
@@ -38,7 +45,8 @@ for id in inconsistent_ids:
 
     df.loc[(df['ID'] == id) & (df['year'] == 2021), 'Flag'] = flag_2022[0]
 
-#Fix club logo link consistency
+#Na sličan način provjeravamo sve igrače koji su obe godine u istom klubu, a imaju različite linkove za logo kluba
+#Uzimamo link iz 2022. godine
 inconsistent_rows = df.groupby('ID')['Club Logo'].nunique() > 1
 
 inconsistent_ids = inconsistent_rows[inconsistent_rows].index
@@ -52,15 +60,15 @@ for id in inconsistent_ids:
 
         df.loc[(df['ID'] == id) & (df['year'] == 2021), 'Club Logo'] = clublogo_2022[0]
 
-#Remove ClubLogo if player isn't in a club
-
-#locate all rows where Club is empty and set Club logo to None
+#Brisanje linkova na logo kluba kod igrača koji nemaju klub
+#Locira sve redove gdje je naziv kluba prazan i postavlja link na logo kluba na None
 df.loc[df['Club'] == '', 'Club Logo'] = None
 
-# Format Club Logo links using regex
+#Neki od linkova na logo kluba su bili u krivom formatu te nisu radili
+#Regex ih popravlja u točni format https://cdn.sofifa.com/teams/{team_id}/{img_id}.png
 df['Club Logo'] = df['Club Logo'].str.replace(r'https://cdn.sofifa.com/teams/(\d+)/\D+(\d+).png', r'https://cdn.sofifa.com/teams/\1/\2.png', regex=True)
 
-#Reformat wage
+#Pretvaranje stupca sa plaćama u obični broj koji je lakše obraditi uklanjanjem oznaka '€', 'M' i 'K'
 wage_euro = []
 for wage in df['Wage']:
     if pd.isna(wage): 
@@ -76,7 +84,7 @@ for wage in df['Wage']:
 
 df['Wage_euro'] = wage_euro
 
-#Reformat Value
+#Na isti način pretvaramo i vrijednost igrača u obični broj
 value_euro = []
 for value in df['Value']:
     if pd.isna(value): 
@@ -92,7 +100,7 @@ for value in df['Value']:
 
 df['Value_euro'] = value_euro
 
-#Release clause
+#Na isti način pretvaramo i klauzulu igrača u obični broj
 release_euro = []
 for release in df['Release Clause']:
     if pd.isna(release): 
@@ -109,47 +117,50 @@ for release in df['Release Clause']:
 df['Release Clause_euro'] = release_euro
 
 
-#Split work rate to attack and defense
+#Razdvajanje stupca Work Rate u dva nova stupca - Attack Work Rate i Defense Work Rate za lakšu upotrebu i razumljivost
 df[['Attack Work Rate', 'Defense Work Rate']] = df['Work Rate'].str.split('/ ', expand=True)
 
 
-#Split body type and height range into seperate columns
+#Razdvajanje stupca Body Type u dva nova stupca - Body Type Only i Height Range
+#Body Type Only sadrži samo tip tijela, a Height Range raspon visine
 df[['Body Type Only', 'Height Range']] = df['Body Type'].str.split('(', expand=True)
 df['Height Range'] = df['Height Range'].str.rstrip(')')
 
 
-#Remove non standard body types
+#Brisanje body typeova koji se javljaju samo jednom
 values = df['Body Type Only'].value_counts()
 df = df[df['Body Type Only'].isin(values[values > 1].index)]
 df['Body Type Only'].value_counts()
-df.head()
 
-#Split Height range into lower and upper bound for detailed analysis
+#Razdvajanje stupca Height Range na lower i upper bound za lakšu uporabu
 df[['Height Range Lower Bound', 'Height Range Upper Bound']] = (
     df['Height Range'].str.split(r'[+-]', expand=True)
 )
+
+#Ako raspon visine ima samo gornju granicu (npr. 180-) tada će zbog prijasnjeg razdvajanja lower bound biti 180, a upper bound None
+#Da to popravimo, uzimamo sve redove gdje je height range takvog oblika i postavljamo lower bound na None, a upper bound na gornju granicu
+#Suprotni slučaj gdje imamo samo donju granicu (npr. 180+) je automatski pokriven u gornjem dijelu koda
 mask = df['Height Range'].notna() & df['Height Range'].str.endswith('-')
 df.loc[mask, 'Height Range Upper Bound'] = df.loc[mask, 'Height Range Lower Bound']
 df.loc[mask, 'Height Range Lower Bound'] = None
-df.head()
 
-#Extract player position
+#Vrijednosti nekih pozicija u tablici imale su html tagove pa ih je potrebno očistiti
+#Regex ignorira sve što je između < > i vraća samo ono što dolazi iza
 df['Position Clean'] = df['Position'].str.extract(r'<.*>(\w*)')
-df['Position Clean'].value_counts()
 
-#Transform Joined to date format
+#Pretvaranje u datetime format
 df['Joined'] = pd.to_datetime(df['Joined'])
 
-#Extract club from Loaned From
+#Neki klubovi u Loaned From stupcu su bili unutar html tagova pa treba izvući samo ime kluba
+#Regex ignorira html tagove <tag> i </tag> i vraća samo ono što se nalazi između
 df['Loaned From Club'] = df['Loaned From'].str.extract(r'<[^\<]*>([^\<]*)<[^\<]*>')
-df['Loaned From Club'].unique()
 
-#Extract only year from Contract Valid Until
+#Uzima samo vrijednost godine iz Contract Valid Until stupca jer su neke vrijednosti bile samo godine, a neke točan datum
 df['Contract Valid Until Year'] = df['Contract Valid Until'].str.extract(r'(\d{4})')
-df['Contract Valid Until Year'].value_counts()
 
 
-#Rename Height and Weight, extract numbers, change to metric
+#Stupci za visinu i težinu su između godina bili u različitim mjernim jedinicama te su bili stringovi oblika vrijednost + mjerna jedinica (npr. 180cm, 6'2", 70kg, 154lbs)
+#Pretvaramo ih u obične brojeve i sve jedinice pretvaramo u metricki sustav
 def feet_to_cm(height):
     if 'cm' in height:
         return int(height.replace('cm', ''))
@@ -177,7 +188,8 @@ def lbs_to_kg(weight):
 df['Weight_kg'] = df['Weight'].apply(lbs_to_kg)
 df[['year', 'Weight_kg']]
 
-#Fix height inconsistency (assume players aren't growing)
+#Na sličan način kao i ranije u skripti, provjeravamo igrače kojima se visina razlikuje te uzimamo visinu iz 2022. godine
+#Pretpostavka da igrači ne rastu
 inconsistent_rows = df.groupby('ID')['Height_cm'].nunique() > 1
 
 inconsistent_ids = inconsistent_rows[inconsistent_rows].index
@@ -188,7 +200,8 @@ for id in inconsistent_ids:
     df.loc[(df['ID'] == id) & (df['year'] == 2021), 'Height_cm'] = height_2022[0]
     
 
-#Fix PreferredFoot - static attribute, use data from 2022 dataset
+#Na sličan način provjeravamo konzistentnost preferirane noge
+#Pretpostavka da je noga s kojom igrač najbolje igra uvijek ista
 inconsistent_rows = df.groupby('ID')['Preferred Foot'].nunique() > 1
 
 inconsistent_ids = inconsistent_rows[inconsistent_rows].index
@@ -198,7 +211,7 @@ for id in inconsistent_ids:
 
     df.loc[(df['ID'] == id) & (df['year'] == 2021), 'Preferred Foot'] = foot_2022[0]
 
-#standardise body type - use 2022 data 
+#Provjera konzistentnosti tipova tijela igrača - uzimamo tip tijela iz 2022. godine
 inconsistent_rows = df.groupby('ID')['Body Type Only'].nunique() > 1
 
 inconsistent_ids = inconsistent_rows[inconsistent_rows].index
@@ -208,10 +221,12 @@ for id in inconsistent_ids:
 
     df.loc[(df['ID'] == id) & (df['year'] == 2021), 'Body Type Only'] = body_2022[0]
     
-#Change Real Face to boolean values
+#Vrijednost Real Face pretvaramao u bool umjesto Yes/No radi lakše uporabe
 df.loc[:,'Real Face'] = df['Real Face'].replace({'Yes': True, 'No': False}).astype(bool)
 df[['Real Face', 'ID']].head()
 
+
+#Odabir finalnih čistih stupaca
 columns = ['ID', 'Clean_Name', 'year', 'Age', 'Photo', 'Nationality', 'Flag', 'Overall',
        'Potential', 'Club', 'Club Logo', 'Value_euro', 'Wage_euro', 'Special',
        'Preferred Foot', 'International Reputation', 'Weak Foot',
@@ -230,7 +245,7 @@ columns = ['ID', 'Clean_Name', 'year', 'Age', 'Photo', 'Nationality', 'Flag', 'O
 
 df_clean = df[columns]
 
-
+#Preimenovanje stupaca
 df_clean.columns = ['ID', 'Name', 'Year', 'Age', 'Photo', 'Nationality', 'Flag', 'Overall',
        'Potential', 'Club', 'Club Logo', 'Value_Euro', 'Wage_Euro', 'Special',
        'Preferred Foot', 'International Reputation', 'Weak Foot',
@@ -248,6 +263,7 @@ df_clean.columns = ['ID', 'Name', 'Year', 'Age', 'Photo', 'Nationality', 'Flag',
        'DefensiveAwareness']
 
 
+#Preimenovanje stupaca i popravljanje tipova radi rješavanja problema s bazom podataka
 df_clean = df_clean.copy()
 df_clean.rename(columns={"ID": "PlayerID"}, inplace=True)
 df_clean.rename(columns={"Club": "ClubName"}, inplace=True)
@@ -255,6 +271,6 @@ df_clean.rename(columns={"Club": "ClubName"}, inplace=True)
 df_clean.columns = df_clean.columns.str.replace(' ', '')
 df_clean.columns = df_clean.columns.str.lower()
 df_clean['jerseynumber'] = pd.to_numeric(df_clean['jerseynumber'], errors='coerce').astype('Int64')
-df_clean.info()
 
+#Spremanje čistih podataka u csv datoteku
 df_clean.to_csv('data/clean_data.csv', index=False)
